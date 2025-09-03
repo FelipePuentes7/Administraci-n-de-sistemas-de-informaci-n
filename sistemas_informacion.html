@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulación Avanzada de NAT - Visualización de Red</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #06b6d4 100%);
+      padding: 2rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      opacity: 0.3;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+      position: relative;
+      z-index: 1;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 2rem;
+    }
+
+    .main-panel {
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 2rem;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .control-panel {
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 2rem;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      height: fit-content;
+      position: sticky;
+      top: 2rem;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 1rem 1.5rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+    }
+
+    .network-diagram {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      min-height: 400px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .network-title {
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 2rem;
+      color: #60a5fa;
+    }
+
+    .devices-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      position: absolute;
+      left: 2rem;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .device {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+
+    .device.active {
+      opacity: 1;
+      transform: translateX(0);
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+
+    .device.error {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .device-icon {
+      font-size: 1.5rem;
+    }
+
+    .device-info {
+      font-size: 0.9rem;
+    }
+
+    .device-name {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .device-ip {
+      color: #94a3b8;
+      font-family: 'Courier New', monospace;
+    }
+
+    .router {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 80px;
+      background: linear-gradient(135deg, #1e40af, #3b82f6);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+      border: 2px solid rgba(59, 130, 246, 0.5);
+    }
+
+    .router-icon {
+      font-size: 2rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .router-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .internet {
+      position: absolute;
+      right: 2rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100px;
+      height: 100px;
+      background: linear-gradient(135deg, #06b6d4, #0891b2);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 25px rgba(6, 182, 212, 0.3);
+    }
+
+    .internet-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .internet-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .connection-line {
+      position: absolute;
+      height: 2px;
+      background: linear-gradient(90deg, #3b82f6, #06b6d4);
+      opacity: 0;
+      transition: all 0.5s ease;
+    }
+
+    .connection-line.active {
+      opacity: 1;
+      animation: pulse 2s infinite;
+    }
+
+    .connection-line.error {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      animation: error-pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+
+    @keyframes error-pulse {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 0.3; }
+    }
+
+    .data-packet {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      opacity: 0;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+    }
+
+    .data-packet.error {
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: rgba(30, 41, 59, 0.6);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .warning { color: #f59e0b; }
+    .info { color: #3b82f6; }
+
+    .progress-bar {
+      background: rgba(30, 41, 59, 0.6);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .progress-track {
+      height: 8px;
+      background: rgba(51, 65, 85, 0.8);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .progress-success {
+      background: linear-gradient(90deg, #10b981, #059669);
+    }
+
+    .progress-error {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+    }
+
+    .connection-log {
+      background: rgba(15, 23, 42, 0.8);
+      border-radius: 8px;
+      padding: 1rem;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+    }
+
+    .log-entry {
+      padding: 0.25rem 0;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      opacity: 0;
+      animation: fadeInUp 0.3s ease forwards;
+    }
+
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .timestamp {
+      color: #64748b;
+      margin-right: 0.5rem;
+    }
+
+    .responsive-table {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 2rem;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .table th {
+      background: rgba(30, 58, 138, 0.8);
+      color: white;
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .table td {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      font-size: 0.9rem;
+    }
+
+    .table tr:hover {
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .table tr.success-row {
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .table tr.error-row {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    @media (max-width: 1024px) {
+      .container {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      
+      .control-panel {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>🌐 Simulación Avanzada de NAT</h1>
+    <p>Visualización interactiva del Network Address Translation y sus efectos en la conectividad de red</p>
+  </header>
+
+  <div class="container">
+    <div class="main-panel">
+      <div class="network-diagram" id="networkDiagram">
+        <h3 class="network-title">Topología de Red</h3>
+        
+        <div class="devices-container" id="devicesContainer">
+          <!-- Devices will be populated here -->
+        </div>
+
+        <div class="router">
+          <div class="router-icon">🔀</div>
+          <div class="router-label">Router NAT</div>
+        </div>
+
+        <div class="internet">
+          <div class="internet-icon">🌍</div>
+          <div class="internet-label">Internet</div>
+        </div>
+      </div>
+
+      <div class="responsive-table">
+        <table class="table" id="connectionTable">
+          <thead>
+            <tr>
+              <th>Dispositivo</th>
+              <th>IP Privada</th>
+              <th>Solicitud</th>
+              <th>IP Pública</th>
+              <th>Puerto</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="control-panel">
+      <div class="btn-group">
+        <button class="btn btn-success" onclick="simulateWithNAT()">
+          ✅ Con NAT
+        </button>
+        <button class="btn btn-danger" onclick="simulateWithoutNAT()">
+          ❌ Sin NAT
+        </button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value success" id="successCount">0</div>
+          <div class="stat-label">Exitosas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value error" id="errorCount">0</div>
+          <div class="stat-label">Fallidas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value info" id="totalDevices">0</div>
+          <div class="stat-label">Dispositivos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value warning" id="successRate">0%</div>
+          <div class="stat-label">Tasa Éxito</div>
+        </div>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-label">
+          <span>Conexiones Exitosas</span>
+          <span id="successPercent">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill progress-success" id="successProgress" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-label">
+          <span>Conexiones Fallidas</span>
+          <span id="errorPercent">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill progress-error" id="errorProgress" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <h4 style="margin-bottom: 1rem; color: #60a5fa;">📋 Log de Conexiones</h4>
+      <div class="connection-log" id="connectionLog">
+        <div class="log-entry">
+          <span class="timestamp">[00:00:00]</span>
+          <span>Sistema iniciado - Esperando simulación...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const deviceTypes = [
+      { icon: '💻', name: 'Laptop', requests: ['Conectar Teams', 'Abrir Slack', 'Acceder VPN'] },
+      { icon: '🖥️', name: 'PC Escritorio', requests: ['Navegar Web', 'Descargar archivos', 'Streaming'] },
+      { icon: '📱', name: 'Smartphone', requests: ['WhatsApp Web', 'Instagram', 'Gmail'] },
+      { icon: '📲', name: 'Tablet', requests: ['YouTube', 'Netflix', 'Zoom'] },
+      { icon: '🖨️', name: 'Impresora', requests: ['Cloud Print', 'Enviar reporte', 'Actualizar firmware'] },
+      { icon: '📺', name: 'Smart TV', requests: ['Netflix', 'Prime Video', 'Disney+'] },
+      { icon: '🎮', name: 'Consola', requests: ['Online Gaming', 'Descargar juegos', 'Chat de voz'] }
+    ];
+
+    let currentDevices = [];
+    let animationTimeouts = [];
+
+    function generatePrivateIP(deviceIndex) {
+      const classes = [
+        () => `10.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${10 + deviceIndex}`,
+        () => `172.${16 + Math.floor(Math.random() * 16)}.${Math.floor(Math.random() * 256)}.${10 + deviceIndex}`,
+        () => `192.168.${Math.floor(Math.random() * 256)}.${10 + deviceIndex}`
+      ];
+      return classes[Math.floor(Math.random() * classes.length)]();
+    }
+
+    function generateDevices() {
+      const deviceCount = Math.floor(Math.random() * 4) + 4; // 4-7 devices
+      const selectedDevices = [...deviceTypes]
+        .sort(() => 0.5 - Math.random())
+        .slice(0, deviceCount);
+
+      return selectedDevices.map((device, index) => ({
+        ...device,
+        id: `device-${index}`,
+        privateIP: generatePrivateIP(index),
+        request: device.requests[Math.floor(Math.random() * device.requests.length)],
+        port: 5000 + index + 1
+      }));
+    }
+
+    function clearAnimations() {
+      animationTimeouts.forEach(timeout => clearTimeout(timeout));
+      animationTimeouts = [];
+      
+      // Clear existing connection lines and packets
+      document.querySelectorAll('.connection-line, .data-packet').forEach(el => el.remove());
+    }
+
+    function renderDevices(devices) {
+      const container = document.getElementById('devicesContainer');
+      container.innerHTML = '';
+
+      devices.forEach((device, index) => {
+        const deviceEl = document.createElement('div');
+        deviceEl.className = 'device';
+        deviceEl.id = device.id;
+        deviceEl.innerHTML = `
+          <div class="device-icon">${device.icon}</div>
+          <div class="device-info">
+            <div class="device-name">${device.name}</div>
+            <div class="device-ip">${device.privateIP}</div>
+          </div>
+        `;
+        container.appendChild(deviceEl);
+
+        // Animate device appearance
+        setTimeout(() => {
+          deviceEl.style.opacity = '1';
+          deviceEl.style.transform = 'translateX(0)';
+        }, index * 200);
+      });
+    }
+
+    function createConnectionLine(fromElement, toElement, isError = false) {
+      const fromRect = fromElement.getBoundingClientRect();
+      const toRect = toElement.getBoundingClientRect();
+      const diagramRect = document.getElementById('networkDiagram').getBoundingClientRect();
+
+      const line = document.createElement('div');
+      line.className = `connection-line ${isError ? 'error' : ''}`;
+      
+      const startX = fromRect.right - diagramRect.left;
+      const startY = fromRect.top + fromRect.height / 2 - diagramRect.top;
+      const endX = toRect.left - diagramRect.left;
+      const endY = toRect.top + toRect.height / 2 - diagramRect.top;
+      
+      const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+      const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+
+      line.style.left = `${startX}px`;
+      line.style.top = `${startY}px`;
+      line.style.width = `${length}px`;
+      line.style.transform = `rotate(${angle}deg)`;
+      line.style.transformOrigin = '0 50%';
+
+      document.getElementById('networkDiagram').appendChild(line);
+      
+      setTimeout(() => line.classList.add('active'), 100);
+      return line;
+    }
+
+    function animateDataPacket(fromElement, toElement, isError = false, delay = 0) {
+      setTimeout(() => {
+        const fromRect = fromElement.getBoundingClientRect();
+        const toRect = toElement.getBoundingClientRect();
+        const diagramRect = document.getElementById('networkDiagram').getBoundingClientRect();
+
+        const packet = document.createElement('div');
+        packet.className = `data-packet ${isError ? 'error' : ''}`;
+        
+        const startX = fromRect.right - diagramRect.left;
+        const startY = fromRect.top + fromRect.height / 2 - diagramRect.top;
+        const endX = toRect.left - diagramRect.left;
+        const endY = toRect.top + toRect.height / 2 - diagramRect.top;
+
+        packet.style.left = `${startX}px`;
+        packet.style.top = `${startY}px`;
+        packet.style.opacity = '1';
+
+        document.getElementById('networkDiagram').appendChild(packet);
+
+        // Animate packet movement
+        packet.animate([
+          { left: `${startX}px`, top: `${startY}px` },
+          { left: `${endX}px`, top: `${endY}px` }
+        ], {
+          duration: 1000,
+          easing: 'ease-in-out'
+        }).onfinish = () => {
+          packet.remove();
+        };
+      }, delay);
+    }
+
+    function addLogEntry(message, type = 'info') {
+      const log = document.getElementById('connectionLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      
+      const now = new Date();
+      const timestamp = now.toTimeString().split(' ')[0];
+      
+      entry.innerHTML = `
+        <span class="timestamp">[${timestamp}]</span>
+        <span>${message}</span>
+      `;
+      
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+
+      // Remove old entries if too many
+      if (log.children.length > 50) {
+        log.removeChild(log.firstChild);
+      }
+    }
+
+    function updateStats(total, success, errors) {
+      const successRate = total > 0 ? Math.round((success / total) * 100) : 0;
+      
+      document.getElementById('totalDevices').textContent = total;
+      document.getElementById('successCount').textContent = success;
+      document.getElementById('errorCount').textContent = errors;
+      document.getElementById('successRate').textContent = `${successRate}%`;
+      
+      document.getElementById('successPercent').textContent = `${successRate}%`;
+      document.getElementById('errorPercent').textContent = `${100 - successRate}%`;
+      
+      document.getElementById('successProgress').style.width = `${successRate}%`;
+      document.getElementById('errorProgress').style.width = `${100 - successRate}%`;
+    }
+
+    function updateTable(devices, withNAT) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      const publicIP = `181.50.${Math.floor(Math.random() * 100)}.${Math.floor(Math.random() * 100)}`;
+
+      devices.forEach((device, index) => {
+        const row = document.createElement('tr');
+        const isSuccess = withNAT || index === 0;
+        row.className = isSuccess ? 'success-row' : 'error-row';
+
+        const status = isSuccess 
+          ? `✅ Conectado exitosamente`
+          : `❌ Conflicto de IP - Conexión rechazada`;
+
+        const displayPort = withNAT ? device.port : '-';
+        const displayPublicIP = withNAT ? publicIP : (index === 0 ? publicIP : 'Conflicto');
+
+        row.innerHTML = `
+          <td>${device.icon} ${device.name}</td>
+          <td><code>${device.privateIP}</code></td>
+          <td>${device.request}</td>
+          <td><code>${displayPublicIP}</code></td>
+          <td>${displayPort}</td>
+          <td class="${isSuccess ? 'success' : 'error'}">${status}</td>
+        `;
+
+        tbody.appendChild(row);
+      });
+    }
+
+    function simulateWithNAT() {
+      clearAnimations();
+      addLogEntry('🟢 Iniciando simulación CON NAT...', 'success');
+      
+      currentDevices = generateDevices();
+      renderDevices(currentDevices);
+      updateTable(currentDevices, true);
+
+      const router = document.querySelector('.router');
+      const internet = document.querySelector('.internet');
+
+      currentDevices.forEach((device, index) => {
+        const deviceEl = document.getElementById(device.id);
+        
+        animationTimeouts.push(setTimeout(() => {
+          deviceEl.classList.add('active');
+          
+          // Create connection line to router
+          createConnectionLine(deviceEl, router);
+          
+          // Animate packet to router
+          animateDataPacket(deviceEl, router, false, 200);
+          
+          // Create connection line from router to internet
+          animationTimeouts.push(setTimeout(() => {
+            createConnectionLine(router, internet);
+            animateDataPacket(router, internet, false, 200);
+            
+            addLogEntry(`${device.icon} ${device.name} (${device.privateIP}) → Router NAT → Internet`, 'success');
+          }, 800));
+          
+        }, index * 500));
+      });
+
+      updateStats(currentDevices.length, currentDevices.length, 0);
+      addLogEntry(`✅ ${currentDevices.length} dispositivos conectados exitosamente con NAT`, 'success');
+    }
+
+    function simulateWithoutNAT() {
+      clearAnimations();
+      addLogEntry('🔴 Iniciando simulación SIN NAT...', 'error');
+      
+      currentDevices = generateDevices();
+      renderDevices(currentDevices);
+      updateTable(currentDevices, false);
+
+      const internet = document.querySelector('.internet');
+
+      currentDevices.forEach((device, index) => {
+        const deviceEl = document.getElementById(device.id);
+        
+        animationTimeouts.push(setTimeout(() => {
+          if (index === 0) {
+            deviceEl.classList.add('active');
+            createConnectionLine(deviceEl, internet);
+            animateDataPacket(deviceEl, internet, false, 200);
+            addLogEntry(`${device.icon} ${device.name} → Conexión directa exitosa`, 'success');
+          } else {
+            deviceEl.classList.add('error');
+            createConnectionLine(deviceEl, internet, true);
+            animateDataPacket(deviceEl, internet, true, 200);
+            addLogEntry(`${device.icon} ${device.name} → ❌ Conflicto de IP pública`, 'error');
+          }
+        }, index * 500));
+      });
+
+      updateStats(currentDevices.length, 1, currentDevices.length - 1);
+      addLogEntry(`⚠️ Solo 1 de ${currentDevices.length} dispositivos pudo conectarse sin NAT`, 'error');
+    }
+
+    // Initialize with empty state
+    updateStats(0, 0, 0);
+  </script>
+</body>
+</html>
